@@ -1,9 +1,9 @@
 
 CFLAGS = -g
 
-all: ssplit plotter
+all: ssplit splot
 
-plotter: splot.c
+splot: splot.c
 	$(CC) $(CFLAGS) splot.c -o splot -lraylib
 
 ssplit: ssplit.c
