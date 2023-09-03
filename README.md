@@ -15,14 +15,14 @@ simply run `make` in the directory root
 ## usage
 
 pipe any desired source into splot as follows.
-`source_program | ./splot`
+```source_program | ./splot```
 or for reading files:
-`./splot < file`
+```./splot < file```
 
 splot wil plot the first valid float value in every line coming into stdin.
 
 you can test this using the test.py script.
-`python test.py | ./splot`
+```python test.py | ./splot```
 
 ### options
 
@@ -34,16 +34,16 @@ you can test this using the test.py script.
 
 ### plotting multiple signals
 
-for plotting multiple signals ssplit can be used.
-ssplit splits up a stdin stream based on a seperator and sends the output to up to 32 child processes.
+for plotting multiple signals `ssplit` can be used.
+`ssplit` splits up a stdin stream based on a seperator and sends the output to up to 32 child processes.
 e.g.
-`python test.py | ./ssplit "./splot" "./splot -x 800"`
+```python test.py | ./ssplit "./splot" "./splot -x 800"```
 this will create two splot windows with different signals.
 
 ![splot_dual](./imgs/splot_dual.png)
 
 Also have a look at the `quad.sh` script which shows how to use splot with options to create a basic layout.
-`python test.py | ./quad.sh`
+```python test.py | ./quad.sh```
 
 ![splot_quad](./imgs/splot_quad.png)
 
