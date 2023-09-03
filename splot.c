@@ -49,7 +49,7 @@ void read_stream(FILE* stream){
 	while(c != EOF && str_i < STRBUFCAP){
 		c = fgetc(stream);
 		if(c == '\n'){
-			int val = parse_val();
+			ValType val = parse_val();
 			insert_buf(val);
 			str_i = 0;
 			str_buf[str_i] = '\0';
