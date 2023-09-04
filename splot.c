@@ -7,6 +7,8 @@
 #include <float.h>
 #include <sys/types.h>
 
+#define FRAME_DURATION (1.0f/60.0f)
+double next_frame_time = 0.0f;
 
 #define BUFCAP 1024
 typedef float ValType ;
@@ -44,6 +46,7 @@ ValType parse_val(){
 }
 
 void read_stream(FILE* stream){
+	next_frame_time = GetTime() + FRAME_DURATION;
 	char c = 0;
 	size_t str_i = 0;
 	while(c != EOF && str_i < STRBUFCAP){
@@ -53,7 +56,11 @@ void read_stream(FILE* stream){
 			insert_buf(val);
 			str_i = 0;
 			str_buf[str_i] = '\0';
-			return;
+			if(GetTime() > next_frame_time){
+				return;
+			}else{
+				continue;
+			}
 		}else if(c != EOF){
 			str_buf[str_i] = c;
 			str_i++;
