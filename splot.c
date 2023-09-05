@@ -10,12 +10,103 @@
 #define FRAME_DURATION (1.0f/60.0f)
 double next_frame_time = 0.0f;
 
-#define BUFCAP 1024
 typedef float ValType ;
-ValType val_buf[BUFCAP];
-size_t val_buf_index = 0;
-size_t buf_size = 0;
+#define VALTYPE_MAX FLT_MAX;
+#define VALTYPE_MIN FLT_MIN;
 
+#define RING_BUF_CAP_INCREMENT 1024
+typedef struct RingBuf RingBuf;
+struct RingBuf{
+	ValType* data;
+	size_t capacity;
+	size_t size;;
+	ValType* write_head;
+	ValType* read_head;
+};
+
+void RingBuf_init(RingBuf* buf){
+	buf->data = (ValType*) malloc(sizeof(ValType)*RING_BUF_CAP_INCREMENT);
+	if(!buf->data){
+		fprintf(stderr, "I require more RAM!\n");
+		exit(1);
+	}
+	buf->capacity = RING_BUF_CAP_INCREMENT;
+	buf->size = 0;
+	buf->write_head = buf->data;
+	buf->read_head = buf->data;
+	memset(buf->data,0,sizeof(ValType)*buf->capacity);
+}
+
+void RingBuf_grow(RingBuf* buf){
+	buf->data = realloc(buf->data, sizeof(ValType)*(buf->capacity+RING_BUF_CAP_INCREMENT));
+	if(!buf->data){
+		fprintf(stderr, "I require more RAM!\n");
+		exit(1);
+	}
+	buf->capacity += RING_BUF_CAP_INCREMENT;
+}
+
+void RingBuf_advance_head(RingBuf* buf, ValType** head){
+	(*head)++;
+	if(*head >= buf->data + buf->size){
+		*head = buf->data;
+	}
+}
+
+void RingBuf_retreat_head(RingBuf* buf, ValType** head){
+	(*head)--;
+	if(*head < buf->data){
+		*head = buf->data + buf->size-1;
+	}
+}
+
+void RingBuf_print(RingBuf* buf){
+	printf("buf->size: %lu, buf->data: [ ",buf->size);
+	for(size_t i = 0; i < buf->size; i++){
+		if(buf->data+i == buf->write_head){
+			printf("\033[42m%f\033[0m, ",buf->data[i]);
+		}else{
+			printf("%f, ",buf->data[i]);
+		}
+	}
+	printf("]\n");
+}
+
+void RingBuf_write(RingBuf* buf, ValType value){
+	if(buf->size < buf->capacity){
+	buf->size++;
+	}
+	RingBuf_advance_head(buf, &buf->write_head);
+	buf->write_head[0] = value;
+}
+
+ValType RingBuf_read(RingBuf* buf){
+	ValType value = *buf->read_head;
+	RingBuf_advance_head(buf, &buf->read_head);
+	return value;
+}
+
+ValType RingBuf_get_max(RingBuf* buf){
+	ValType max = VALTYPE_MIN;
+	for(size_t i = 0; i < buf->size; i++){
+		if(buf->data[i] > max){
+			max = buf->data[i];
+		}
+	}
+	return max;
+}
+
+ValType RingBuf_get_min(RingBuf* buf){
+	ValType min = VALTYPE_MAX;
+	for(size_t i = 0; i < buf->size; i++){
+		if(buf->data[i] < min){
+			min = buf->data[i];
+		}
+	}
+	return min;
+}
+
+static RingBuf data_buffer;
 
 #define STRBUFCAP 2048
 char str_buf[STRBUFCAP];
@@ -30,13 +121,6 @@ float map(float val, float old_low, float old_high, float new_low, float new_hig
         return val;  
 }      
 
-void insert_buf(ValType val){
-	val_buf[val_buf_index] = val;
-	val_buf_index = (val_buf_index + 1) % BUFCAP;
-	if(buf_size < BUFCAP){
-		buf_size++;
-	}
-}
 
 ValType parse_val(){
 	ValType val;
@@ -53,14 +137,13 @@ void read_stream(FILE* stream){
 		c = fgetc(stream);
 		if(c == '\n'){
 			ValType val = parse_val();
-			insert_buf(val);
+			RingBuf_write(&data_buffer,val);
 			str_i = 0;
 			str_buf[str_i] = '\0';
 			if(GetTime() > next_frame_time){
 				return;
-			}else{
-				continue;
 			}
+			
 		}else if(c != EOF){
 			str_buf[str_i] = c;
 			str_i++;
@@ -69,32 +152,12 @@ void read_stream(FILE* stream){
 	}
 }
 
-ValType get_buf_max(){
-	ValType max = FLT_MIN;
-	for(size_t i = 0; i < buf_size; i++){
-		if(val_buf[i] > max){
-			max = val_buf[i];
-		}
-	}
-	return max;
-}
-
-ValType get_buf_min(){
-	ValType min = FLT_MAX;
-	for(size_t i = 0; i < buf_size; i++){
-		if(val_buf[i] < min){
-			min = val_buf[i];
-		}
-	}
-	return min;
-}
-
 void render_gui(Rectangle* rect){
 	DrawRectangleLinesEx(*rect, 2, WHITE);
 	char upper_label[256];
 	char lower_label[256];
-	sprintf(upper_label, "%f", get_buf_max());
-	sprintf(lower_label, "%f", get_buf_min());
+	sprintf(upper_label, "%f", RingBuf_get_max(&data_buffer));
+	sprintf(lower_label, "%f", RingBuf_get_min(&data_buffer));
 	int fontsize = 32;
 	int margin = 8;
 	DrawText(upper_label, rect->x+margin, rect->y+margin, fontsize, WHITE);
@@ -104,35 +167,28 @@ void render_gui(Rectangle* rect){
 void render_buf(Rectangle* rect){
 	render_gui(rect);
 	
-	int prevx = 0;
-	int prevy = 0;
+
 
 	// index ops to draw last written value first
-	size_t i = val_buf_index;
-	if(i == 0){
-		i = BUFCAP;
-	}
-	i--;
 
-	int col = buf_size;
-	while(col > 0){
-		if(i == 0){
-			i += BUFCAP;
-			i--;
-			continue;
-		}
-		size_t pi = (i+buf_size - 1)%buf_size;
-		int y = map(val_buf[i],get_buf_min(),get_buf_max(),rect->height,0)+rect->y;
-		int x = map(col,0,buf_size,0,rect->width)+rect->x;
-		if(col < buf_size){
-			DrawLine(prevx,prevy,x,y,WHITE);
-		}	
+	ValType** head = &data_buffer.write_head;
+	int col = data_buffer.size-1;
+	ValType min = RingBuf_get_min(&data_buffer);
+	ValType max = RingBuf_get_max(&data_buffer);
+	int prevy = map(**head,min,max,rect->height,0)+rect->y;
+	int prevx = map(col,0,data_buffer.size,0,rect->width)+rect->x;
+	while(col >= 0){
+
+		int y = map(**head,min,max,rect->height,0)+rect->y;
+		int x = map(col,0,data_buffer.size,0,rect->width)+rect->x;
+		DrawLine(prevx,prevy,x,y,WHITE);
 		prevx = x;
 		prevy = y;
 
+		RingBuf_retreat_head(&data_buffer, head);
 		col--;
-		i--;
 	}
+	//printf("%f-%f\n",min,max);
 }
 
 typedef struct SPlot_Options SPlot_Options;
@@ -182,7 +238,7 @@ void parse_options(SPlot_Options* options, int argc, char** argv){
 					strcpy(options->plot_name, argv[i]);
 					continue;
 				}break;
-				default:
+				default: break;
 			}
 			if(ret < 0){
 INVALID_ARGS:			print_help();
@@ -206,6 +262,8 @@ int main(int argc, char** argv){
 	
 	printf("%d,%d,%d,%d\n",options.window_x,options.window_y,options.window_w,options.window_h);
 	
+	RingBuf_init(&data_buffer);
+
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 	InitWindow(options.window_w, options.window_h, options.plot_name);
 	SetWindowPosition(options.window_x,options.window_y);
