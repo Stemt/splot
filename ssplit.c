@@ -21,7 +21,8 @@ struct Split_Options{
 typedef struct Split_Target Split_Target;
 struct Split_Target{
 	int pid;
-	int pipe;
+	int pipe_in;
+	int pipe_out;
 	int dead;
 };
 
@@ -35,9 +36,16 @@ void print_help(){
 }
 
 void start_target(Split_Target* target, char* target_cmd){
-	int pipefd[2];
-	if(pipe(pipefd) < 0){
-		fprintf(stderr,"Error while trying to create pipe: %s\n",strerror(errno));
+	if(strlen(target_cmd) == 0) return;
+	int pipefd_in[2];
+	if(pipe(pipefd_in) < 0){
+		fprintf(stderr,"Error while trying to create pipe in: %s\n",strerror(errno));
+		exit(1);
+	}
+
+	int pipefd_out[2];
+	if(pipe(pipefd_in) < 0){
+		fprintf(stderr,"Error while trying to create pipe out: %s\n",strerror(errno));
 		exit(1);
 	}
 
@@ -48,12 +56,16 @@ void start_target(Split_Target* target, char* target_cmd){
 	}
 
 	if(child == 0){ // if this process is the child
-		if(dup2(pipefd[PIPE_OUT], STDIN_FILENO) < 0){
+		// redirect child stdin and stdout
+		if(dup2(pipefd_in[PIPE_OUT], STDIN_FILENO) < 0){
 			fprintf(stderr,"Could not attach pipe output to stdin of process: %s\n",strerror(errno));
 			exit(1);
 		}
-		close(PIPE_IN); // close pipe input from this side as it wont be used
-		
+		if(dup2(pipefd_out[PIPE_IN], STDOUT_FILENO) < 0){
+			fprintf(stderr,"Could not attach pipe output to stdin of process: %s\n",strerror(errno));
+			exit(1);
+		}
+
 		wordexp_t parsed_cmd;
 		int ret = wordexp(target_cmd, &parsed_cmd, 0); // split target command args
 		if(ret < 0){
@@ -70,16 +82,26 @@ void start_target(Split_Target* target, char* target_cmd){
 	}
 	printf("child proc: %d created\n",child);
 
-	close(pipefd[PIPE_OUT]); // parent process does not need to read from the pipe
 
-	target->pipe = pipefd[PIPE_IN];
+	target->pipe_in = pipefd_in[PIPE_IN];
+	target->pipe_out = pipefd_out[PIPE_OUT];
 	target->pid = child;
 }
 
 void write_to_target(Split_Target* target, char* s, size_t n){
-	int ret = write(target->pipe,s,n);
-	ret = write(target->pipe,"\n",1);
+	if(target->pid == 0) return;
+	int ret = write(target->pipe_in,s,n);
+	ret = write(target->pipe_in,"\n",1);
 	target->dead = ret < 0;
+
+	// flush target stdout
+	char c[1];
+	read(target->pipe_out,c,1);
+	while(c[0] != EOF){
+		printf("%c",c[0]);
+		read(target->pipe_out,c,1);
+	}
+
 }
 
 #define MAX_TARGETS 32
