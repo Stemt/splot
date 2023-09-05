@@ -19,18 +19,18 @@ typedef struct RingBuf RingBuf;
 struct RingBuf{
 	ValType* data;
 	size_t capacity;
-	size_t size;;
+	size_t size;
 	ValType* write_head;
 	ValType* read_head;
 };
 
-void RingBuf_init(RingBuf* buf){
-	buf->data = (ValType*) malloc(sizeof(ValType)*RING_BUF_CAP_INCREMENT);
+void RingBuf_init(RingBuf* buf, size_t capacity){
+	buf->data = (ValType*) malloc(sizeof(ValType)*capacity);
 	if(!buf->data){
 		fprintf(stderr, "I require more RAM!\n");
 		exit(1);
 	}
-	buf->capacity = RING_BUF_CAP_INCREMENT;
+	buf->capacity = capacity;
 	buf->size = 0;
 	buf->write_head = buf->data;
 	buf->read_head = buf->data;
@@ -198,14 +198,16 @@ struct SPlot_Options{
 	int window_y;
 	int window_w;
 	int window_h;
+	size_t initial_capacity;
 };
 
 void print_help(){
 	printf("splot plots input value read from stdin in a graphical window in realtime\n\n");
 	printf("usage: splot [options]\n");
 	printf("options:\n");
-	printf("  -x/y/h/w [value]: sets x, y, height or width (value must be positive)\n");
-	printf("  -n [name]: set window name of the plot\n");
+	printf("  -x/y/h/w [value]	: sets x, y, height or width (value must be positive)\n");
+	printf("  -n [name]		: set window name of the plot\n");
+	printf("  -c [amount]		: set initial buffer capacity (n values)\n");
 	printf("stdin: values to be plotted should be seperated by a newline ('\\n')\n");
 }
 
@@ -238,6 +240,12 @@ void parse_options(SPlot_Options* options, int argc, char** argv){
 					strcpy(options->plot_name, argv[i]);
 					continue;
 				}break;
+				case 'c': {
+					i++;
+					ret = sscanf(argv[i], "%lu", &options->initial_capacity);
+					continue;
+				}break;
+
 				default: break;
 			}
 			if(ret < 0){
@@ -256,13 +264,14 @@ int main(int argc, char** argv){
 		.window_x = 0,
 		.window_y = 0,
 		.window_w = 800,
-		.window_h = 600
+		.window_h = 600,
+		.initial_capacity = RING_BUF_CAP_INCREMENT
 	};
 	parse_options(&options, argc, argv);
 	
 	printf("%d,%d,%d,%d\n",options.window_x,options.window_y,options.window_w,options.window_h);
 	
-	RingBuf_init(&data_buffer);
+	RingBuf_init(&data_buffer,options.initial_capacity);
 
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 	InitWindow(options.window_w, options.window_h, options.plot_name);

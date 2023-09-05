@@ -31,6 +31,7 @@ you can test this using the test.py script.
 | -n | set window name to identify a signal | "SPlot" |
 | -x/y | set initial position of window | 0/0 |
 | -w/h | set width and height of window | 800/600 |
+| -c | set buffer value capacity | 1024 |
 
 ### plotting multiple signals
 
