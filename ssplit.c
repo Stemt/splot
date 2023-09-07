@@ -8,6 +8,7 @@
 #include <string.h>
 #include <wordexp.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #define PIPE_IN 1
 #define PIPE_OUT 0
@@ -44,7 +45,7 @@ void start_target(Split_Target* target, char* target_cmd){
 	}
 
 	int pipefd_out[2];
-	if(pipe(pipefd_in) < 0){
+	if(pipe(pipefd_out) < 0){
 		fprintf(stderr,"Error while trying to create pipe out: %s\n",strerror(errno));
 		exit(1);
 	}
@@ -84,24 +85,10 @@ void start_target(Split_Target* target, char* target_cmd){
 
 
 	target->pipe_in = pipefd_in[PIPE_IN];
+	fcntl(target->pipe_in, F_SETFL, O_NONBLOCK);
 	target->pipe_out = pipefd_out[PIPE_OUT];
+	fcntl(target->pipe_out, F_SETFL, O_NONBLOCK);
 	target->pid = child;
-}
-
-void write_to_target(Split_Target* target, char* s, size_t n){
-	if(target->pid == 0) return;
-	int ret = write(target->pipe_in,s,n);
-	ret = write(target->pipe_in,"\n",1);
-	target->dead = ret < 0;
-
-	// flush target stdout
-	char c[1];
-	read(target->pipe_out,c,1);
-	while(c[0] != EOF){
-		printf("%c",c[0]);
-		read(target->pipe_out,c,1);
-	}
-
 }
 
 #define MAX_TARGETS 32
@@ -116,6 +103,26 @@ void handle_sigpipe(int sig)
 	}
 	close(STDIN_FILENO);
 	exit(1);
+}
+
+void write_to_target(Split_Target* target, char* s, size_t n){
+	if(target->pid == 0) return;
+	int ret = write(target->pipe_in,s,n);
+	ret = write(target->pipe_in,"\n",1);
+	target->dead = ret < 0;
+	if(target->dead){
+		handle_sigpipe(SIGPIPE);
+	}
+
+	// flush target stdout
+	char out[1024];
+	int read_bytes = 0;
+	read_bytes = read(target->pipe_out,out,1024);
+	while(read_bytes > 0){
+		write(STDOUT_FILENO,out,read_bytes);
+		read_bytes = read(target->pipe_out,out,1024);
+	}
+
 }
 
 int main(int argc, char** argv){
