@@ -7,7 +7,8 @@
 #include <float.h>
 #include <sys/types.h>
 
-#define FRAME_DURATION (1.0f/60.0f)
+#define TARGET_FPS 60.0f
+#define FRAME_DURATION (1.0f/TARGET_FPS)
 double next_frame_time = 0.0f;
 
 typedef float ValType ;
@@ -73,6 +74,7 @@ void RingBuf_print(RingBuf* buf){
 }
 
 void RingBuf_write(RingBuf* buf, ValType value){
+	//RingBuf_print(buf);
 	if(buf->size < buf->capacity){
 	buf->size++;
 	}
@@ -164,28 +166,39 @@ void render_gui(Rectangle* rect){
 	DrawText(lower_label, rect->x+margin, rect->y+rect->height-fontsize-margin, fontsize, WHITE);
 }
 
+float zoom_factor = 0.1f;
+float zoom = 0.0f;
 void render_buf(Rectangle* rect){
 	render_gui(rect);
 	
-
+	zoom += GetMouseWheelMove();
+	if(zoom < 0){ zoom = 0.0f; }
+	
+	int buf_window_size = data_buffer.size-1;
+	for(size_t i = 0; i < zoom; i++){
+		buf_window_size = buf_window_size - (buf_window_size * zoom_factor);
+	}
 
 	// index ops to draw last written value first
+	
+	int buf_window_start = data_buffer.size - buf_window_size;
 
-	ValType** head = &data_buffer.write_head;
+	ValType* head = data_buffer.write_head;
 	int col = data_buffer.size-1;
 	ValType min = RingBuf_get_min(&data_buffer);
 	ValType max = RingBuf_get_max(&data_buffer);
-	int prevy = map(**head,min,max,rect->height,0)+rect->y;
-	int prevx = map(col,0,data_buffer.size,0,rect->width)+rect->x;
-	while(col >= 0){
+	int prevy = map(*head,min,max,rect->height,0)+rect->y;
+	int prevx = map(col,buf_window_start,data_buffer.size,0,rect->width)+rect->x;
+	//printf("draw range: %f - %d\n, draw start: %d,%d",zoom,col,prevx,prevy);
+	while(col >= buf_window_start){
 
-		int y = map(**head,min,max,rect->height,0)+rect->y;
-		int x = map(col,0,data_buffer.size,0,rect->width)+rect->x;
+		int y = map(*head,min,max,rect->height,0)+rect->y;
+		int x = map(col,buf_window_start,data_buffer.size,0,rect->width)+rect->x;
 		DrawLine(prevx,prevy,x,y,WHITE);
 		prevx = x;
 		prevy = y;
 
-		RingBuf_retreat_head(&data_buffer, head);
+		RingBuf_retreat_head(&data_buffer, &head);
 		col--;
 	}
 	//printf("%f-%f\n",min,max);
@@ -269,15 +282,16 @@ int main(int argc, char** argv){
 	};
 	parse_options(&options, argc, argv);
 	
-	printf("%d,%d,%d,%d\n",options.window_x,options.window_y,options.window_w,options.window_h);
+	//printf("%d,%d,%d,%d\n",options.window_x,options.window_y,options.window_w,options.window_h);
 	
 	RingBuf_init(&data_buffer,options.initial_capacity);
 
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 	InitWindow(options.window_w, options.window_h, options.plot_name);
+	SetTargetFPS(TARGET_FPS);
 	SetWindowPosition(options.window_x,options.window_y);
 	Vector2 pos = GetWindowPosition();
-	printf("%f,%f\n",pos.x,pos.y);
+	//printf("%f,%f\n",pos.x,pos.y);
 	
 	Rectangle rect = { 20,20,options.window_w-40,options.window_h-40};
 
